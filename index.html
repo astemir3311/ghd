@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Встречи</title>
+</head>
+<body>
+  <div id="app"></div>
+
+<script>
+/* ============================================================
+   ГЛОБАЛЬНЫЕ ДАННЫЕ
+   ============================================================ */
+var state = {
+  page: "home",
+  meetings: JSON.parse(localStorage.getItem("meetings") || "[]"),
+  groups: JSON.parse(localStorage.getItem("groups") || "[]"),
+  currentDate: new Date(),
+  selectedDate: null,
+  selectedGroup: null,
+  feedbackOpen: false
+};
+
+function saveMeetings() { localStorage.setItem("meetings", JSON.stringify(state.meetings)); }
+function saveGroups() { localStorage.setItem("groups", JSON.stringify(state.groups)); }
+
+if (state.groups.length === 0) {
+  state.groups = [
+    { id: 1, name: "Друзья", type: "Друзья", color: "#FFC107" },
+    { id: 2, name: "Рабочая команда", type: "Работа", color: "#E6A800" }
+  ];
+  saveGroups();
+}
+
+/* ============================================================
+   УТИЛИТЫ
+   ============================================================ */
+function el(tag, parent, props) {
+  var e = document.createElement(tag);
+  if (props) {
+    for (var k in props) {
+      if (k === "text")        e.textContent = props[k];
+      else if (k === "html")   e.innerHTML = props[k];
+      else if (k === "events") { for (var ev in props[k]) e.addEventListener(ev, props[k][ev]); }
+      else if (k === "style")  { for (var s in props[k]) e.style[s] = props[k][s]; }
+      else                     e.setAttribute(k, props[k]);
+    }
+  }
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+var MONTHS = ["Январь","Февраль","Март","Апрель","Май","Июнь",
+              "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+var DAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+
+function pad(n){ return n < 10 ? "0"+n : ""+n; }
+function getDaysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
+function getFirstDayOfMonth(y,m){
+  var d = new Date(y,m,1).getDay();
+  return d === 0 ? 6 : d - 1;
+}
+
+/* ============================================================
+   НАВИГАЦИЯ
+   ============================================================ */
+function navigate(page) {
+  state.page = page;
+  render();
+}
+
+function buildNav() {
+  var nav = el("nav", null, {
+    style: {
+      display: "flex", gap: "16px", padding: "12px 20px",
+      background: "#0a0a0a", borderBottom: "2px solid #FFC107",
+      position: "fixed", top: "0", left: "0", right: "0",
+      zIndex: "100", fontFamily: "Arial, sans-serif",
+      justifyContent: "center", alignItems: "center"
+    }
+  });
+
+  var items = [
+    { key: "home",    label: "Главная" },
+    { key: "groups",  label: "Группы" },
+    { key: "calendar", label: "Календарь" },
+    { key: "meeting", label: "Назначить встречу" }
+  ];
+
+  items.forEach(function(item){
+    var a = el("a", nav, {
+      href: "#", text: item.label,
+      events: { click: function(e){ e.preventDefault(); navigate(item.key); } },
+      style: {
+        color: state.page === item.key ? "#FFC107" : "#f0f0f0",
+        textDecoration: "none",
+        fontWeight: state.page === item.key ? "bold" : "normal",
+        fontSize: "18px",
+        cursor: "pointer",
+        padding: "8px 16px",
+        borderRadius: "6px",
+        transition: "color 0.3s, background 0.3s"
+      }
+    });
+    a.addEventListener("mouseenter", function(){
+      if (state.page !== item.key) { a.style.color = "#FFC107"; a.style.background = "rgba(255, 193, 7, 0.1)"; }
+    });
+    a.addEventListener("mouseleave", function(){
+      if (state.page !== item.key) { a.style.color = "#f0f0f0"; a.style.background = "transparent"; }
+    });
+  });
+
+  return nav;
+}
+
+/* ============================================================
+   ЦИТАТЫ
+   ============================================================ */
+var QUOTES = [
+  { text: "Лучшие встречи -- те, после которых хочется действовать.", author: "О деловых встречах" },
+  { text: "Встреча с друзьями -- это перезагрузка для души.", author: "О дружбе" },
+  { text: "Эффективная встреча экономит часы бессмысленной переписки.", author: "О работе" },
+  { text: "Не все встречи важны, но каждая важная встреча меняет всё.", author: "Философия встреч" },
+  { text: "Хорошая встреча начинается с уважения к чужому времени.", author: "О деловом этикете" },
+  { text: "Самые тёплые воспоминания рождаются за чашкой кофе и хорошей беседой.", author: "О встречах в жизни" }
+];
+
+/* ============================================================
+   СТРАНИЦА 1 — ГЛАВНАЯ
+   ============================================================ */
+function renderHome(container) {
+  var hero = el("div", container, { style: { textAlign: "center", marginTop: "120px", fontFamily: "Arial, sans-serif", color: "#f0f0f0", position: "relative" } });
+
+  el("h1", hero, { text: "Добро пожаловать в систему Встречи", style: { fontSize: "42px", marginBottom: "16px", color: "#FFC107" } });
+  el("p", hero, { text: "Планируйте встречи, управляйте временем -- все просто!", style: { fontSize: "20px", marginBottom: "30px" } });
+
+  var count = state.meetings.length;
+  el("p", hero, { text: "У вас " + count + " назначенных встреч", style: { fontSize: "18px", color: "#aaaaaa" } });
+
+  var btn = el("button", hero, {
+    text: "Перейти к календарю",
+    events: { click: function(){ navigate("calendar"); } },
+    style: { marginTop: "30px", padding: "14px 36px", fontSize: "18px", background: "#FFC107", color: "#000000", border: "none", borderRadius: "8px", cursor: "pointer", transition: "background 0.3s, color 0.3s" }
+  });
+  btn.addEventListener("mouseenter", function(){ btn.style.background="#FFD54F"; });
+  btn.addEventListener("mouseleave", function(){ btn.style.background="#FFC107"; });
+
+  var quotesSection = el("div", hero, { style: { textAlign: "left", maxWidth: "700px", margin: "60px auto 30px" } });
+  el("h2", quotesSection, { text: "Цитаты о встречах", style: { color: "#E6A800", textAlign: "center", marginBottom: "24px", fontSize: "28px" } });
+  var quotesList = el("div", quotesSection, { style: { display: "flex", flexDirection: "column", gap: "16px" } });
+
+  QUOTES.forEach(function(q, i) {
+    var qCard = el("div", quotesList, { style: { background: "#1c1c1c", borderLeft: "4px solid #E6A800", padding: "18px 22px", borderRadius: "8px", fontFamily: "Arial, sans-serif", color: "#f0f0f0", fontStyle: "italic", transform: "translateY(20px) scale(0.95)", opacity: "0" } });
+    el("p", qCard, { text: "\"" + q.text + "\"", style: { margin: "0 0 10px 0", fontSize: "16px", lineHeight: "1.5", color: "#f0f0f0" } });
+    el("span", qCard, { text: "-- " + q.author, style: { fontSize: "14px", color: "#aaaaaa", fontStyle: "normal" } });
+
+    (function(card, delay) { setTimeout(function() { var step = 0; function anim() { step++; var p = Math.min(step / 25, 1); var ease = 1 - Math.pow(1 - p, 3); card.style.opacity = ease; card.style.transform = "translateY(" + (20 * (1 - ease)) + "px) scale(" + (0.95 + 0.05 * ease) + ")"; if (p < 1) requestAnimationFrame(anim); } anim(); }, delay); })(qCard, 150 + i * 100);
+  });
+
+  if (state.meetings.length > 0) {
+    el("h2", hero, { text: "Ваши ближайшие встречи:", style: { marginTop:"60px", color:"#FFC107" } });
+    var list = el("div", hero, { style: { textAlign:"left", maxWidth:"600px", margin:"20px auto" } });
+    var sorted = state.meetings.slice().sort(function(a,b){ return new Date(a.date+"T"+a.time) - new Date(b.date+"T"+b.time); });
+    sorted.forEach(function(m){
+      var card = el("div", list, { style: { background: "#1c1c1c", borderLeft: "4px solid #FFC107", padding: "14px 18px", marginBottom: "10px", borderRadius: "6px", fontFamily: "Arial, sans-serif", color: "#f0f0f0", transform: "translateX(-40px)", opacity: "0" } });
+      el("strong", card, { text: m.title, style: { fontSize: "18px", color: "#FFC107" } }); el("br", card);
+      el("span", card, { text: "Дата: " + m.date + " | Время: " + m.time, style: { fontSize:"14px", color:"#aaaaaa" } });
+      if (m.participants) { el("br", card); el("span", card, { text: "Участники: " + m.participants, style: { fontSize:"14px", color:"#cccccc" } }); }
+      if (m.location) { el("br", card); el("span", card, { text: "Адрес: " + m.location, style: { fontSize:"14px", color:"#cccccc" } }); }
+      if (m.description) { el("br", card); el("span", card, { text: "Примечание: " + m.description, style: { fontSize:"14px", color:"#cccccc" } }); }
+    });
+    var cards = list.children; var delay = 0;
+    for (var i = 0; i < cards.length; i++) { (function(card, d){ setTimeout(function(){ var step = 0; function anim(){ step++; var p = Math.min(step / 30, 1); card.style.transform = "translateX(" + ((-40)*(1-p)) + "px)"; card.style.opacity = p; if (p < 1) requestAnimationFrame(anim); } anim(); }, d); })(cards[i], delay); delay += 120; }
+  }
+  startParticles();
+}
+
+function startParticles() {
+  var existing = document.querySelector("canvas"); if (existing) existing.remove();
+  var canvas = el("canvas", document.body, { style: { position: "fixed", top: "0", left: "0", width: "100%", height: "100%", pointerEvents: "none", zIndex: "-1" } });
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  var ctx = canvas.getContext("2d");
+  var particles = [];
+  for (var i = 0; i < 60; i++) { particles.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, r: Math.random() * 3 + 1, dx: (Math.random() - 0.5) * 0.8, dy: Math.random() * 1 + 0.3, alpha: Math.random() * 0.5 + 0.2 }); }
+  function draw() {
+    if (state.page !== "home") { requestAnimationFrame(draw); return; }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(function(p){ ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = "rgba(255, 193, 7," + p.alpha + ")"; ctx.fill(); p.x += p.dx; p.y += p.dy; if (p.y > canvas.height + 10) { p.y = -10; p.x = Math.random() * canvas.width; } if (p.x > canvas.width + 10) p.x = 0; if (p.x < -10) p.x = canvas.width; });
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+/* ============================================================
+   ВИДЖЕТ ПОГОДЫ
+   ============================================================ */
+function renderWeatherWidget(container) {
+  var weatherDiv = el("div", container, {
+    style: {
+      background: "#2a2a2a", borderRadius: "8px", padding: "12px 10px",
+      marginBottom: "16px", border: "1px solid #444",
+      opacity: "0", transform: "translateY(-10px)"
+    }
+  });
+  setTimeout(function(){ weatherDiv.style.opacity = "1"; weatherDiv.style.transform = "translateY(0)"; weatherDiv.style.transition = "opacity 0.4s, transform 0.4s"; }, 50);
+
+  el("div", weatherDiv, { text: "Прогноз на 7 дней", style: { color: "#FFC107", marginBottom: "8px", textAlign: "center", fontSize: "14px", fontWeight: "bold" } });
+
+  var forecastRow = el("div", weatherDiv, {
+    style: { display: "flex", justifyContent: "space-between", gap: "4px", fontSize: "12px", color: "#aaa" }
+  });
+  forecastRow.innerHTML = "<div style='flex:1;text-align:center'>Загрузка...</div>";
+
+  var lat = 55.75, lon = 37.62;
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(pos){
+      lat = pos.coords.latitude.toFixed(2);
+      lon = pos.coords.longitude.toFixed(2);
+      fetchWeather(lat, lon, forecastRow);
+    }, function(){ fetchWeather(lat, lon, forecastRow); });
+  } else {
+    fetchWeather(lat, lon, forecastRow);
+  }
+
+  function fetchWeather(lat, lon, target) {
+    fetch("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&daily=temperature_2m_max,weathercode&timezone=auto&forecast_days=7")
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        target.innerHTML = "";
+        var days = data.daily;
+        for(var i=0; i<days.time.length; i++){
+          var date = new Date(days.time[i]);
+          var dayName = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][date.getDay()];
+          var code = days.weathercode[i];
+          var max = Math.round(days.temperature_2m_max[i]);
+          var status = getWeatherStatus(code);
+
+          var dayEl = el("div", target, {
+            style: { textAlign: "center", background: "#1c1c1c", borderRadius: "6px", padding: "6px 2px", flex: "1" }
+          });
+          el("div", dayEl, { text: dayName, style: { color: "#FFC107", fontWeight: "bold", marginBottom: "4px" } });
+          el("div", dayEl, { text: max + "°", style: { color: "#f0f0f0", fontSize: "14px", marginBottom: "2px" } });
+          el("div", dayEl, { text: status, style: { fontSize: "10px", color: "#888" } });
+        }
+      })
+      .catch(function(){
+        target.innerHTML = "<div style='flex:1;text-align:center;color:#FFD54F'>Ошибка загрузки</div>";
+      });
+  }
+
+  function getWeatherStatus(code) {
+    if (code === 0) return "Ясно";
+    if (code <= 3) return "Облачно";
+    if (code <= 48) return "Туман";
+    if (code <= 67) return "Дождь";
+    if (code <= 77) return "Снег";
+    if (code <= 82) return "Ливень";
+    if (code <= 86) return "Метель";
+    if (code >= 95) return "Гроза";
+    return "Переменно";
+  }
+}
+
+/* ============================================================
+   СТРАНИЦА 2 — КАЛЕНДАРЬ
+   ============================================================ */
+function renderCalendar(container) {
+  var wrap = el("div", container, { style: { marginTop: "90px", textAlign: "center", fontFamily: "Arial, sans-serif", color: "#f0f0f0" } });
+  var calDiv = el("div", wrap, { style: { display: "inline-block", background: "#1c1c1c", borderRadius: "12px", padding: "24px", minWidth: "340px", maxWidth: "90vw" } });
+
+  // Встраиваем виджет погоды в начало календаря
+  renderWeatherWidget(calDiv);
+
+  if (state.selectedGroup) {
+    var g = state.groups.find(function(x){ return x.id === state.selectedGroup; });
+    if (g) el("div", wrap, { text: "Группа: " + g.name + " (" + g.type + ")", style: { color: "#FFC107", fontSize: "16px", marginBottom: "10px", opacity: "0.9" } });
+  }
+
+  var year = state.currentDate.getFullYear(); var month = state.currentDate.getMonth();
+  var navRow = el("div", calDiv, { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" } });
+
+  var prevBtn = el("button", navRow, { text: "<", events: { click: function(){ state.currentDate = new Date(year, month - 1, 1); navigate("calendar"); } }, style: { background: "#FFC107", color: "#000000", border: "none", borderRadius: "6px", fontSize: "20px", width: "40px", height: "40px", cursor: "pointer", transition: "transform 0.2s" } });
+  prevBtn.addEventListener("click", function(){ prevBtn.style.transform = "scale(0.9)"; setTimeout(function(){ prevBtn.style.transform = "scale(1)"; }, 100); });
+
+  el("span", navRow, { text: MONTHS[month] + " " + year, style: { fontSize: "22px", fontWeight: "bold", color: "#FFC107" } });
+
+  var nextBtn = el("button", navRow, { text: ">", events: { click: function(){ state.currentDate = new Date(year, month + 1, 1); navigate("calendar"); } }, style: { background: "#FFC107", color: "#000000", border: "none", borderRadius: "6px", fontSize: "20px", width: "40px", height: "40px", cursor: "pointer", transition: "transform 0.2s" } });
+  nextBtn.addEventListener("click", function(){ nextBtn.style.transform = "scale(0.9)"; setTimeout(function(){ nextBtn.style.transform = "scale(1)"; }, 100); });
+
+  var todayBtn = el("button", navRow, { text: "Сегодня", style: { background: "transparent", border: "1px solid #FFC107", color: "#FFC107", borderRadius: "6px", padding: "6px 12px", cursor: "pointer", transition: "background 0.2s, color 0.2s" } });
+  todayBtn.addEventListener("mouseenter", function(){ todayBtn.style.background = "#FFC107"; todayBtn.style.color = "#000"; });
+  todayBtn.addEventListener("mouseleave", function(){ todayBtn.style.background = "transparent"; todayBtn.style.color = "#FFC107"; });
+  todayBtn.addEventListener("click", function(){ state.currentDate = new Date(); navigate("calendar"); });
+
+  var grid = el("div", calDiv, { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center" } });
+  DAYS.forEach(function(d){ el("div", grid, { text: d, style: { fontWeight: "bold", color: "#FFC107", fontSize: "14px", padding: "8px 0" } }); });
+
+  var firstDay = getFirstDayOfMonth(year, month); var daysInMonth = getDaysInMonth(year, month); var today = new Date();
+  for (var i = 0; i < firstDay; i++) el("div", grid);
+
+  var tooltip = el("div", document.body, { id: "calTooltip", style: { position: "fixed", background: "#0a0a0a", border: "1px solid #FFC107", borderRadius: "8px", padding: "10px", fontSize: "13px", color: "#f0f0f0", zIndex: "1000", pointerEvents: "none", display: "none", maxWidth: "200px", boxShadow: "0 4px 12px rgba(0,0,0,0.6)" } });
+
+  for (var d = 1; d <= daysInMonth; d++) {
+    var dateStr = year + "-" + pad(month+1) + "-" + pad(d);
+    var dayMeetings = state.meetings.filter(function(m){ return m.date === dateStr; });
+    var hasMeeting = dayMeetings.length > 0;
+    var isToday = (d === today.getDate() && month === today.getMonth() && year === today.getFullYear());
+    var dayOfWeek = new Date(year, month, d).getDay();
+    var isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+    var dayCell = el("div", grid, { text: d, style: { 
+      padding: "10px 4px 6px 4px", borderRadius: "8px", cursor: "pointer", fontSize: "16px", 
+      background: isToday ? "#FFC107" : (hasMeeting ? "#2a2a2a" : (isWeekend ? "#151515" : "transparent")),
+      color: isToday ? "#000000" : (hasMeeting ? "#FFC107" : (isWeekend ? "#aaa" : "#cccccc")),
+      fontWeight: isToday ? "bold" : "normal",
+      transition: "transform 0.3s, background 0.3s, color 0.3s",
+      position: "relative", minHeight: "40px"
+    }});
+
+    dayCell._dateStr = dateStr; dayCell._isToday = isToday; dayCell._hasMeeting = hasMeeting;
+
+    if (hasMeeting) {
+      var titles = dayMeetings.map(function(m){ return m.title; }).join(", ");
+      if (titles.length > 18) titles = titles.substring(0, 18) + "...";
+      el("div", dayCell, { text: titles, style: { fontSize: "10px", color: isToday ? "#333" : "#aaa", marginTop: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } });
+    }
+
+    if (hasMeeting) {
+      var dot = el("div", dayCell, { style: { width: "6px", height: "6px", borderRadius: "50%", background: "#FFC107", margin: "2px auto 0" } });
+      (function(dotRef){ var scale = 1, growing = true; function pulse(){ if (state.page !== "calendar") return; scale += growing ? 0.03 : -0.03; if (scale > 1.4) growing = false; if (scale < 0.8) growing = true; dotRef.style.transform = "scale(" + scale + ")"; dotRef.style.opacity = 0.4 + (scale - 0.8) * 1.6; setTimeout(pulse, 40); } pulse(); })(dot);
+    }
+
+    dayCell.addEventListener("mouseenter", function(e){
+      var cell = this;
+      if (!cell._isToday) { cell.style.background = "#FFC107"; cell.style.color = "#000000"; }
+      cell.style.transform = "scale(1.15)";
+
+      if (cell._hasMeeting) {
+        var html = "<strong style='color:#FFC107'>" + cell._dateStr.split("-").reverse().join(".") + "</strong><br>";
+        dayMeetings.forEach(function(m){ html += "<div style='margin:3px 0;color:#ddd'>Время: " + m.time + " | " + m.title + "</div>"; });
+        tooltip.innerHTML = html;
+        tooltip.style.display = "block";
+      }
+    });
+
+    dayCell.addEventListener("mousemove", function(e){
+      tooltip.style.left = (e.clientX + 12) + "px";
+      tooltip.style.top = (e.clientY + 12) + "px";
+    });
+
+    dayCell.addEventListener("mouseleave", function(){
+      var cell = this;
+      if (!cell._isToday) { cell.style.background = cell._hasMeeting ? "#2a2a2a" : "transparent"; cell.style.color = cell._hasMeeting ? "#FFC107" : "#cccccc"; }
+      cell.style.transform = "scale(1)";
+      tooltip.style.display = "none";
+    });
+
+    dayCell.addEventListener("click", function(){ state.selectedDate = this._dateStr; navigate("meeting"); });
+  }
+
+  el("p", wrap, { text: "Наведите на день для просмотра встреч. Кликните для создания новой.", style: { marginTop: "20px", color: "#888888", fontSize: "14px" } });
+}
+
+/* ============================================================
+   СТРАНИЦА 3 — НАЗНАЧИТЬ ВСТРЕЧУ (С КАРТОЙ)
+   ============================================================ */
+function renderMeeting(container) {
+  var wrap = el("div", container, { style: { marginTop: "90px", textAlign: "center", fontFamily: "Arial, sans-serif", color: "#f0f0f0", maxWidth: "600px", margin: "90px auto 0", opacity: "0", transform: "translateY(30px)" } });
+  var step = 0; function animIn(){ step++; var p = Math.min(step / 40, 1); var ease = 1 - Math.pow(1 - p, 3); wrap.style.opacity = ease; wrap.style.transform = "translateY(" + (30 * (1 - ease)) + "px)"; if (p < 1) requestAnimationFrame(animIn); } animIn();
+
+  el("h2", wrap, { text: "Назначить встречу", style: { color: "#FFC107", fontSize: "30px" } });
+  var form = el("div", wrap, { style: { background: "#1c1c1c", borderRadius: "12px", padding: "24px", textAlign: "left", marginTop: "20px" } });
+
+  if (state.selectedGroup) {
+    var g = state.groups.find(function(x){ return x.id === state.selectedGroup; });
+    if (g) el("div", form, { text: "Для группы: " + g.name, style: { color: "#FFD54F", marginBottom: "12px", fontWeight: "bold", fontSize: "15px" } });
+  }
+
+  el("label", form, { text: "Название встречи:", style: { display:"block", marginBottom:"6px", color:"#aaaaaa" } });
+  var titleInput = el("input", form, { type: "text", placeholder: "Например: Созвон с командой", style: { width: "100%", padding: "10px 12px", fontSize: "16px", background: "#2a2a2a", border: "1px solid #333333", borderRadius: "6px", color: "#f0f0f0", boxSizing: "border-box", marginBottom: "16px", outline: "none" } });
+
+  el("label", form, { text: "Пригласить участника встречи:", style: { display:"block", marginBottom:"6px", color:"#aaaaaa" } });
+  var participantInput = el("input", form, { type: "text", placeholder: "Имя или email (можно через запятую)", style: { width: "100%", padding: "10px 12px", fontSize: "16px", background: "#2a2a2a", border: "1px solid #333333", borderRadius: "6px", color: "#f0f0f0", boxSizing: "border-box", marginBottom: "16px", outline: "none" } });
+
+  el("label", form, { text: "Место встречи (адрес):", style: { display:"block", marginBottom:"6px", color:"#aaaaaa" } });
+  var locationInput = el("input", form, { type: "text", placeholder: "Например: Москва, Красная площадь", style: { width: "100%", padding: "10px 12px", fontSize: "16px", background: "#2a2a2a", border: "1px solid #333333", borderRadius: "6px", color: "#f0f0f0", boxSizing: "border-box", marginBottom: "8px", outline: "none" } });
+  el("small", form, { text: "Введите адрес и нажмите 'Показать на карте'", style: { color: "#777", display: "block", marginBottom: "12px" } });
+
+  var showMapBtn = el("button", form, { text: "Показать на карте", style: { width: "100%", padding: "10px", background: "transparent", border: "1px solid #FFC107", color: "#FFC107", borderRadius: "6px", cursor: "pointer", fontWeight: "bold", marginBottom: "16px", transition: "background 0.3s, color 0.3s" } });
+  showMapBtn.addEventListener("mouseenter", function(){ showMapBtn.style.background = "#FFC107"; showMapBtn.style.color = "#000"; });
+  showMapBtn.addEventListener("mouseleave", function(){ showMapBtn.style.background = "transparent"; showMapBtn.style.color = "#FFC107"; });
+
+  var mapContainer = el("div", form, { id: "meetingMap", style: { display: "none", width: "100%", height: "300px", borderRadius: "8px", overflow: "hidden", border: "2px solid #FFC107", marginBottom: "16px" } });
+
+  showMapBtn.addEventListener("click", function(){
+    var addr = locationInput.value.trim();
+    if (!addr) { locationInput.style.borderColor = "#FFD54F"; setTimeout(function(){ locationInput.style.borderColor = "#333"; }, 1000); return; }
+    mapContainer.style.display = "block";
+    mapContainer.innerHTML = '<iframe width="100%" height="100%" frameborder="0" scrolling="no" marginheight="0" marginwidth="0" src="https://www.openstreetmap.org/export/embed.html?bbox=&layer=mapnik&marker=' + encodeURIComponent(addr) + '" style="border: 1px solid #333"></iframe><br><small><a href="https://www.openstreetmap.org/search?query=' + encodeURIComponent(addr) + '" target="_blank" style="color:#FFC107">Открыть в OpenStreetMap</a></small>';
+  });
+
+  el("label", form, { text: "Дата:", style: { display:"block", marginBottom:"6px", color:"#aaaaaa" } });
+  var dateInput = el("input", form, { type: "date", value: state.selectedDate || "", style: { width: "100%", padding: "10px 12px", fontSize: "16px", background: "#2a2a2a", border: "1px solid #333333", borderRadius: "6px", color: "#f0f0f0", boxSizing: "border-box", marginBottom: "16px", outline: "none" } });
+  el("label", form, { text: "Время:", style: { display:"block", marginBottom:"6px", color:"#aaaaaa" } });
+  var timeInput = el("input", form, { type: "time", style: { width: "100%", padding: "10px 12px", fontSize: "16px", background: "#2a2a2a", border: "1px solid #333333", borderRadius: "6px", color: "#f0f0f0", boxSizing: "border-box", marginBottom: "16px", outline: "none" } });
+  el("label", form, { text: "Описание:", style: { display:"block", marginBottom:"6px", color:"#aaaaaa" } });
+  var descInput = el("textarea", form, { placeholder: "Подробности встречи...", style: { width: "100%", padding: "10px 12px", fontSize: "16px", background: "#2a2a2a", border: "1px solid #333333", borderRadius: "6px", color: "#f0f0f0", boxSizing: "border-box", marginBottom: "16px", outline: "none", minHeight: "80px", resize: "vertical", fontFamily: "Arial, sans-serif" } });
+
+  var saveBtn = el("button", form, { text: "Сохранить встречу", style: { width: "100%", padding: "14px", fontSize: "18px", background: "#FFC107", color: "#000000", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold", transition: "background 0.3s, transform 0.2s" } });
+  saveBtn.addEventListener("mouseenter", function(){ saveBtn.style.background = "#FFD54F"; }); saveBtn.addEventListener("mouseleave", function(){ saveBtn.style.background = "#FFC107"; });
+
+  var msg = el("div", wrap, { text: "", style: { marginTop: "16px", fontSize: "16px", color: "#E6A800", fontWeight: "bold", opacity: "0", transform: "scale(0.8)", transition: "opacity 0.4s, transform 0.4s" } });
+  var counter = el("div", form, { text: "Символов: 0", style: { textAlign: "right", color: "#777777", fontSize: "13px", marginBottom: "12px", transition: "transform 0.15s, color 0.15s" } });
+  descInput.addEventListener("input", function(){ counter.textContent = "Символов: " + descInput.value.length; counter.style.transform = "scale(1.2)"; counter.style.color = descInput.value.length > 100 ? "#FFD54F" : "#777777"; setTimeout(function(){ counter.style.transform = "scale(1)"; }, 150); });
+
+  saveBtn.addEventListener("click", function(){
+    var title = titleInput.value.trim(); 
+    var participants = participantInput.value.trim();
+    var location = locationInput.value.trim();
+    var date = dateInput.value; 
+    var time = timeInput.value; 
+    var desc = descInput.value.trim();
+    if (!title || !date || !time) { msg.textContent = "Заполните название, дату и время!"; msg.style.color = "#FFD54F"; msg.style.opacity = "1"; msg.style.transform = "scale(1)"; return; }
+    state.meetings.push({ id: Date.now(), title: title, participants: participants, location: location, date: date, time: time, description: desc, groupId: state.selectedGroup }); saveMeetings();
+    msg.textContent = "Встреча \"" + title + "\" сохранена!"; msg.style.color = "#E6A800"; msg.style.opacity = "1"; msg.style.transform = "scale(1)";
+    saveBtn.style.transform = "scale(1.05)"; setTimeout(function(){ saveBtn.style.transform = "scale(1)"; }, 200);
+    titleInput.value = ""; participantInput.value = ""; locationInput.value = ""; timeInput.value = ""; descInput.value = ""; counter.textContent = "Символов: 0"; mapContainer.style.display = "none"; mapContainer.innerHTML = "";
+    setTimeout(function(){ msg.style.opacity = "0"; msg.style.transform = "scale(0.8)"; }, 3000);
+  });
+
+  if (state.meetings.length > 0) {
+    el("h3", wrap, { text: "Все встречи:", style: { marginTop:"30px", color:"#FFC107" } });
+    var listWrap = el("div", wrap, { style: { textAlign:"left" } });
+    var sorted = state.meetings.slice().sort(function(a,b){ return new Date(b.date+"T"+b.time) - new Date(a.date+"T"+a.time); });
+    sorted.forEach(function(m, idx){
+      var card = el("div", listWrap, { style: { background: "#1c1c1c", borderLeft: "4px solid #2a2a2a", padding: "12px 16px", marginBottom: "8px", borderRadius: "6px", color: "#f0f0f0", position: "relative", opacity: "0", transform: "translateX(30px)" } });
+      el("strong", card, { text: m.title, style: { color:"#FFC107" } }); el("br", card);
+      el("span", card, { text: "Дата: " + m.date + " | Время: " + m.time, style: { fontSize:"14px", color:"#aaaaaa" } });
+      if (m.participants) { el("br", card); el("span", card, { text: "Участники: " + m.participants, style: { fontSize:"14px", color:"#cccccc" } }); }
+      if (m.location) { el("br", card); el("span", card, { text: "Адрес: " + m.location, style: { fontSize:"14px", color:"#cccccc" } }); }
+      if (m.description) { el("br", card); el("span", card, { text: "Примечание: " + m.description, style: { fontSize:"14px", color:"#cccccc" } }); }
+      var delBtn = el("button", card, { text: "X", style: { position: "absolute", top: "10px", right: "10px", background: "transparent", border: "1px solid #FFC107", color: "#FFC107", borderRadius: "4px", width: "28px", height: "28px", cursor: "pointer", fontSize: "14px", transition: "background 0.2s, color 0.2s" } });
+      delBtn.addEventListener("mouseenter", function(){ delBtn.style.background = "#FFC107"; delBtn.style.color = "#000000"; }); delBtn.addEventListener("mouseleave", function(){ delBtn.style.background = "transparent"; delBtn.style.color = "#FFC107"; });
+      delBtn.addEventListener("click", function(){ state.meetings = state.meetings.filter(function(x){ return x.id !== m.id; }); saveMeetings(); navigate("meeting"); });
+      (function(c, i){ setTimeout(function(){ var s = 0; function a(){ s++; var p = Math.min(s/25, 1); c.style.opacity = p; c.style.transform = "translateX(" + (30*(1-p)) + "px)"; if (p < 1) requestAnimationFrame(a); } a(); }, idx * 80); })(card, idx);
+    });
+  }
+}
+
+/* ============================================================
+   СТРАНИЦА 4 — ГРУППЫ
+   ============================================================ */
+function renderGroups(container) {
+  var wrap = el("div", container, { style: { marginTop: "90px", textAlign: "center", fontFamily: "Arial, sans-serif", color: "#f0f0f0" } });
+  el("h2", wrap, { text: "Ваши группы", style: { color: "#FFC107", fontSize: "30px", marginBottom: "20px" } });
+
+  var form = el("div", wrap, { style: { background: "#1c1c1c", borderRadius: "12px", padding: "20px", maxWidth: "400px", margin: "0 auto 30px", textAlign: "left", opacity: "0", transform: "translateY(20px)" } });
+  setTimeout(function(){ form.style.opacity = "1"; form.style.transform = "translateY(0)"; form.style.transition = "opacity 0.4s, transform 0.4s"; }, 50);
+
+  el("h3", form, { text: "Добавить группу", style: { color: "#E6A800", marginTop: "0", marginBottom: "12px" } });
+  var nameInput = el("input", form, { type: "text", placeholder: "Название группы", style: { width: "100%", padding: "10px", background: "#2a2a2a", border: "1px solid #333", borderRadius: "6px", color: "#f0f0f0", marginBottom: "10px", boxSizing: "border-box", outline: "none" } });
+  var typeSelect = el("select", form, { style: { width: "100%", padding: "10px", background: "#2a2a2a", border: "1px solid #333", borderRadius: "6px", color: "#f0f0f0", marginBottom: "10px", boxSizing: "border-box", outline: "none" } });
+  ["Друзья","Работа","Учёба","Спорт","Другое"].forEach(function(t){ el("option", typeSelect, { text: t, value: t }); });
+
+  var addBtn = el("button", form, { text: "Создать группу", style: { width: "100%", padding: "10px", background: "#FFC107", color: "#000", border: "none", borderRadius: "6px", fontWeight: "bold", cursor: "pointer", transition: "background 0.3s" } });
+  addBtn.addEventListener("mouseenter", function(){ addBtn.style.background = "#FFD54F"; }); addBtn.addEventListener("mouseleave", function(){ addBtn.style.background = "#FFC107"; });
+  addBtn.addEventListener("click", function(){
+    var n = nameInput.value.trim(); if(!n) { nameInput.style.borderColor = "#FFD54F"; setTimeout(function(){ nameInput.style.borderColor = "#333"; }, 1000); return; }
+    state.groups.push({ id: Date.now(), name: n, type: typeSelect.value }); saveGroups(); navigate("groups");
+  });
+
+  var list = el("div", wrap, { style: { display: "flex", flexDirection: "column", gap: "14px", maxWidth: "500px", margin: "0 auto" } });
+
+  if (state.groups.length === 0) {
+    el("p", list, { text: "Пока нет групп. Создайте первую выше.", style: { color: "#888", textAlign: "center" } });
+  }
+
+  state.groups.forEach(function(g, i) {
+    var card = el("div", list, { style: { background: "#1c1c1c", borderLeft: "5px solid #FFC107", padding: "16px", borderRadius: "8px", textAlign: "left", transform: "translateX(-30px)", opacity: "0", position: "relative" } });
+    el("strong", card, { text: g.name, style: { fontSize: "18px", color: "#FFC107" } }); el("br", card);
+    el("span", card, { text: "Тип: " + g.type, style: { fontSize: "14px", color: "#aaa" } });
+
+    var meetBtn = el("button", card, { text: "Назначить встречу", style: { marginTop: "10px", padding: "8px 14px", background: "transparent", border: "1px solid #FFC107", color: "#FFC107", borderRadius: "4px", cursor: "pointer", transition: "background 0.2s, color 0.2s" } });
+    meetBtn.addEventListener("mouseenter", function(){ meetBtn.style.background = "#FFC107"; meetBtn.style.color = "#000"; });
+    meetBtn.addEventListener("mouseleave", function(){ meetBtn.style.background = "transparent"; meetBtn.style.color = "#FFC107"; });
+    meetBtn.addEventListener("click", function(){ state.selectedGroup = g.id; navigate("calendar"); });
+
+    var delBtn = el("button", card, { text: "Удалить", style: { position: "absolute", top: "12px", right: "12px", background: "transparent", border: "1px solid #666", color: "#888", padding: "4px 8px", borderRadius: "4px", cursor: "pointer", fontSize: "12px", transition: "border-color 0.2s, color 0.2s" } });
+    delBtn.addEventListener("mouseenter", function(){ delBtn.style.borderColor = "#FFC107"; delBtn.style.color = "#FFC107"; });
+    delBtn.addEventListener("mouseleave", function(){ delBtn.style.borderColor = "#666"; delBtn.style.color = "#888"; });
+    delBtn.addEventListener("click", function(){ state.groups = state.groups.filter(function(x){ return x.id !== g.id; }); saveGroups(); navigate("groups"); });
+
+    (function(c, d){ setTimeout(function(){ var s=0; function a(){ s++; var p=Math.min(s/25,1); c.style.opacity=p; c.style.transform="translateX(" + (-30*(1-p)) + "px)"; if(p<1) requestAnimationFrame(a); } a(); }, d); })(card, i * 80);
+  });
+}
+
+/* ============================================================
+   ФОНОВАЯ СЕТКА
+   ============================================================ */
+function renderGridBg() {
+  var existing = document.getElementById("gridBg"); if (existing) existing.remove();
+  var canvas = el("canvas", document.body, { id: "gridBg", style: { position: "fixed", top: "0", left: "0", width: "100%", height: "100%", pointerEvents: "none", zIndex: "-2" } });
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  var ctx = canvas.getContext("2d"); var offset = 0;
+  function drawGrid(){
+    ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.strokeStyle = "rgba(255, 193, 7, 0.06)"; ctx.lineWidth = 1;
+    var spacing = 50; offset = (offset + 0.15) % spacing;
+    for (var x = -spacing + offset; x < canvas.width + spacing; x += spacing) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+    for (var y = -spacing + offset; y < canvas.height + spacing; y += spacing) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+    requestAnimationFrame(drawGrid);
+  }
+  drawGrid();
+}
+
+/* ============================================================
+   ВИДЖЕТ ОБРАТНОЙ СВЯЗИ
+   ============================================================ */
+function renderFeedbackWidget() {
+  var existing = document.getElementById("feedbackWidget"); if (existing) existing.remove();
+  var widget = el("div", document.body, { id: "feedbackWidget", style: { position: "fixed", bottom: "20px", right: "20px", zIndex: "999", fontFamily: "Arial, sans-serif" } });
+
+  if (!state.feedbackOpen) {
+    var btn = el("button", widget, { text: "?", style: { width: "50px", height: "50px", borderRadius: "50%", background: "#FFC107", color: "#000", border: "none", fontSize: "24px", fontWeight: "bold", cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.5)", transition: "transform 0.3s, background 0.3s" } });
+    btn.addEventListener("mouseenter", function(){ btn.style.transform = "scale(1.15)"; btn.style.background = "#FFD54F"; });
+    btn.addEventListener("mouseleave", function(){ btn.style.transform = "scale(1)"; btn.style.background = "#FFC107"; });
+    btn.addEventListener("click", function(){ state.feedbackOpen = true; renderFeedbackWidget(); });
+  } else {
+    var container = el("div", widget, { style: { width: "300px", background: "#1c1c1c", border: "1px solid #FFC107", borderRadius: "12px", padding: "16px", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", opacity: "0", transform: "translateY(20px) scale(0.9)", transition: "opacity 0.3s, transform 0.3s" } });
+    setTimeout(function(){ container.style.opacity = "1"; container.style.transform = "translateY(0) scale(1)"; }, 10);
+    el("h3", container, { text: "Обратная связь", style: { color: "#FFC107", margin: "0 0 12px 0", fontSize: "18px" } });
+    var textarea = el("textarea", container, { placeholder: "Опишите ошибку, баг или предложение...", style: { width: "100%", minHeight: "80px", padding: "10px", background: "#2a2a2a", border: "1px solid #444", borderRadius: "6px", color: "#f0f0f0", fontFamily: "Arial, sans-serif", boxSizing: "border-box", resize: "vertical", outline: "none" } });
+    setTimeout(function(){ textarea.focus(); }, 100);
+    var btnRow = el("div", container, { style: { display: "flex", justifyContent: "space-between", marginTop: "12px" } });
+    var closeBtn = el("button", btnRow, { text: "Отмена", style: { background: "transparent", border: "1px solid #666", color: "#aaa", padding: "8px 14px", borderRadius: "6px", cursor: "pointer", transition: "border-color 0.2s, color 0.2s" } });
+    closeBtn.addEventListener("mouseenter", function(){ closeBtn.style.borderColor = "#FFC107"; closeBtn.style.color = "#FFC107"; });
+    closeBtn.addEventListener("mouseleave", function(){ closeBtn.style.borderColor = "#666"; closeBtn.style.color = "#aaa"; });
+    closeBtn.addEventListener("click", function(){ container.style.opacity = "0"; container.style.transform = "translateY(20px) scale(0.9)"; setTimeout(function(){ state.feedbackOpen = false; renderFeedbackWidget(); }, 300); });
+    var submitBtn = el("button", btnRow, { text: "Отправить", style: { background: "#FFC107", border: "none", color: "#000", padding: "8px 14px", borderRadius: "6px", cursor: "pointer", fontWeight: "bold", transition: "background 0.2s, color 0.2s" } });
+    submitBtn.addEventListener("mouseenter", function(){ submitBtn.style.background = "#FFD54F"; });
+    submitBtn.addEventListener("mouseleave", function(){ submitBtn.style.background = "#FFC107"; });
+    submitBtn.addEventListener("click", function(){
+      var text = textarea.value.trim(); if (!text) { textarea.style.borderColor = "#FFD54F"; setTimeout(function(){ textarea.style.borderColor = "#444"; }, 1500); return; }
+      var feedbacks = JSON.parse(localStorage.getItem("feedbacks") || "[]"); feedbacks.push({ text: text, date: new Date().toISOString() }); localStorage.setItem("feedbacks", JSON.stringify(feedbacks));
+      submitBtn.textContent = "Отправлено!"; submitBtn.style.background = "#4CAF50"; submitBtn.style.color = "#fff";
+      setTimeout(function(){ container.style.opacity = "0"; container.style.transform = "translateY(20px) scale(0.9)"; setTimeout(function(){ state.feedbackOpen = false; renderFeedbackWidget(); }, 300); }, 800);
+    });
+  }
+}
+
+/* ============================================================
+   ОСНОВНОЙ РЕНДЕР
+   ============================================================ */
+function render() {
+  var app = document.getElementById("app");
+  app.innerHTML = "";
+  var nav = buildNav(); app.appendChild(nav);
+
+  var oldCanvas = document.querySelector("canvas"); if (oldCanvas) oldCanvas.remove();
+
+  if (state.page === "home") renderHome(app);
+  else if (state.page === "groups") renderGroups(app);
+  else if (state.page === "calendar") renderCalendar(app);
+  else if (state.page === "meeting") renderMeeting(app);
+
+  renderGridBg();
+  renderFeedbackWidget();
+}
+
+render();
+</script>
+</body>
+</html>
